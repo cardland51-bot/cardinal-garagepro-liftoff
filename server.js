@@ -26,10 +26,16 @@ const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '7', 10);
 const ALLOWED_MIME = (process.env.ALLOWED_MIME || 'image/jpeg,image/png,image/webp').split(',').map(s=>s.trim());
 const INFER_PROVIDER = process.env.INFER_PROVIDER || 'stub';
 
-['', '/uploads', '/devices', '/payments', '/logs', '/submissions', '/analytics', '/geo'].forEach(d => {
-  const p = path.join(DATA_DIR, d);
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
-});
+const dirs = ['uploads', 'devices', 'payments', 'logs'];
+try {
+  if (fs.existsSync(DATA_DIR) && fs.accessSync(DATA_DIR, fs.constants.W_OK) === undefined) {
+    dirs.forEach(d => fs.mkdirSync(path.join(DATA_DIR, d), { recursive: true }));
+  } else {
+    console.log('Skipping /data mkdir — not writable or not mounted yet');
+  }
+} catch (err) {
+  console.log('Skipping /data mkdir —', err.message);
+}
 
 const logStream = fs.createWriteStream(path.join(DATA_DIR, 'logs', 'app.log'), { flags: 'a' });
 app.use(morgan('combined', { stream: logStream }));
