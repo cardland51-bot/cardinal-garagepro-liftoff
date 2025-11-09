@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: cardinal-garagepro
+    env: node
+    plan: starter
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: ADMIN_TOKEN
+        value: change_me_admin_token
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: ORIGIN_ALLOWLIST
+        value: https://cardinalgaragepro.com,https://www.cardinalgaragepro.com
+      - key: MAX_UPLOAD_MB
+        value: "7"
+      - key: ALLOWED_MIME
+        value: image/jpeg,image/png,image/webp
+      - key: PRO_PRICE_USD
+        value: "5"
+      - key: SUB_PRICE_USD
+        value: "19"
+      - key: INFER_PROVIDER
+        value: stub
+    disk:
+      name: cgpro-data
+      mountPath: /data
+      sizeGB: 2

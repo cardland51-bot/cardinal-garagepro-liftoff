@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contribute Work — GaragePro</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="container">
+  <h1>Contribute Work (Private)</h1>
+  <p class="notes">Help improve bands by sharing a past job. Photo + short description + what you charged. Private; used for analytics only.</p>
+  <form id="subForm" enctype="multipart/form-data">
+    <div class="uploader">
+      <input type="file" name="media" accept="image/*" capture="environment" required>
+      <input type="text" name="label" placeholder="Label (e.g., Driveway wash)" required>
+      <textarea name="description" placeholder="Short description (100–200 chars)"></textarea>
+      <input type="number" name="chargedPriceUSD" placeholder="Charged price (USD)" required>
+      <div style="display:flex; gap:8px;">
+        <input type="text" name="state" placeholder="State (e.g., TX)" maxlength="2" required style="width:100px;">
+        <input type="text" name="city" placeholder="City (optional)">
+        <input type="text" name="zip" placeholder="ZIP (optional)" maxlength="10">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" name="consent" required> I consent to private analytics use.
+      </label>
+      <button class="btn primary" type="submit">Submit</button>
+    </div>
+  </form>
+  <script>
+    document.getElementById('subForm').addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const res = await fetch('/api/submissions', { method:'POST', body: fd });
+      const j = await res.json();
+      if (res.ok) { alert('Thanks! Status: ' + j.status); location.href = '/'; }
+      else { alert('Error: ' + (j.error || 'failed')); }
+    });
+  </script>
+</body></html>

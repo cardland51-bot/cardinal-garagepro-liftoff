@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moderation — GaragePro</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="container">
+  <h1>Moderation Queue</h1>
+  <p>Read-only diode with approve/reject actions. Append ?token=YOUR_TOKEN</p>
+  <div id="list"></div>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    async function load() {
+      const res = await fetch('/api/admin/submissions?status=PENDING', { headers: token? {'X-Admin-Token': token} : {} });
+      if (!res.ok) { document.getElementById('list').textContent = 'Unauthorized'; return; }
+      const j = await res.json();
+      const wrap = document.getElementById('list');
+      wrap.innerHTML='';
+      j.items.forEach(s => {
+        const el = document.createElement('div');
+        el.className='card';
+        el.innerHTML = `
+          <img class="photo" src="${s.media.url}" alt="photo">
+          <div class="content">
+            <div class="label">${s.label} — $${s.chargedPriceUSD}</div>
+            <div class="notes">${s.description || ''}</div>
+            <div class="meta">${s.geo.state}${s.geo.city?(', '+s.geo.city):''} · ${new Date(s.createdAt).toLocaleString()}</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <button class="btn" data-a="approve" data-id="${s.id}">Approve</button>
+              <button class="btn subtle" data-a="reject" data-id="${s.id}">Reject</button>
+            </div>
+          </div>`;
+        wrap.appendChild(el);
+      });
+      wrap.addEventListener('click', async (e)=>{
+        const b = e.target.closest('button'); if (!b) return;
+        const id = b.dataset.id, a = b.dataset.a;
+        const ep = '/api/admin/submissions/'+id+'/'+a;
+        const res = await fetch(ep, { method:'POST', headers: token? {'X-Admin-Token': token} : {} });
+        if (res.ok) load(); else alert('Action failed');
+      });
+    }
+    load();
+  </script>
+</body></html>

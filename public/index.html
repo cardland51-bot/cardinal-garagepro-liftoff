@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0B0D0E"/>
+  <title>Cardinal GaragePro</title>
+  <link rel="icon" href="/icons/icon-192.png">
+  <script src="/scripts/htmx.min.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="appbar">
+    <div class="logo"><img src="/logo.svg" alt="Cardinal GaragePro"/></div>
+    <div class="actions"><a class="btn subtle" href="/submit/">Contribute</a>
+      <button id="installBtn" class="btn subtle" hidden>Install</button>
+      <button id="themeBtn" class="btn">Night</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="uploader">
+      <form id="uploadForm" hx-post="/api/jobs/upload" hx-encoding="multipart/form-data" hx-target="#cards" hx-swap="afterbegin">
+        <input type="file" name="media" accept="image/*" capture="environment" required />
+        <input type="number" step="1" name="userPrice" placeholder="Optional: your price" />
+        <button class="btn primary">Create Price Band</button>
+      </form>
+    </section>
+
+    <section class="cards" id="cards" hx-get="/api/jobs/list" hx-trigger="load">
+      <!-- Cards injected here -->
+    </section>
+  </main>
+
+  <script type="module">
+    const themeBtn = document.getElementById('themeBtn');
+    const saved = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    themeBtn.textContent = saved === 'dark' ? 'Day' : 'Night';
+    themeBtn.onclick = () => {
+      const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', cur);
+      localStorage.setItem('theme', cur);
+      themeBtn.textContent = cur === 'dark' ? 'Day' : 'Night';
+    };
+
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      installBtn.hidden = false;
+    });
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      installBtn.hidden = true;
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js');
+    }
+
+    document.body.addEventListener('htmx:afterOnLoad', (e) => {
+      try {
+        const data = JSON.parse(e.detail.xhr.responseText);
+        if (data && Array.isArray(data.items)) {
+          const root = document.getElementById('cards');
+          root.innerHTML = '';
+          data.items.forEach(renderCard);
+        } else if (data && data.id) {
+          renderCard(data, true);
+        }
+      } catch (_) {}
+    });
+
+    function renderCard(card, prepend=false) {
+      const root = document.getElementById('cards');
+      const el = document.createElement('article');
+      el.className = 'card';
+      el.innerHTML = `
+        <img class="photo" src="${card.media.url}" alt="job photo"/>
+        <div class="content">
+          <div class="label">${escapeHtml(card.label)}</div>
+          <div class="band">$${card.aiLow} – $${card.aiHigh}</div>
+          <div class="notes">${escapeHtml(card.notes)}</div>
+          <div class="meta">${new Date(card.createdAt).toLocaleString()}</div>
+        </div>
+        <div class="pro">
+          ${card.pro ? '' : '<div class="watermark">Preview — Not for Customer Use</div>'}
+          ${card.pro ? '<a class="btn subtle" href="'+card.media.url+'" download>Share/Download</a>' : '<button class="btn upgrade" data-id="'+card.id+'">Unlock Pro Report</button>'}
+        </div>
+      `;
+      if (prepend) root.prepend(el); else root.appendChild(el);
+      const btn = el.querySelector('.btn.upgrade');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          const res = await fetch('/api/cards/'+card.id+'/upgrade', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'per_card' }) });
+          const data = await res.json();
+          if (data.checkoutUrl) window.location.href = data.checkoutUrl;
+        });
+      }
+    }
+
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
+  </script>
+</body>
+</html>
