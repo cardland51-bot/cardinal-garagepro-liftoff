@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "postinstall": "node scripts/postinstall.js"
+   "postinstall": "node scripts/postinstall.js || echo 'postinstall skipped'"
+
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",
