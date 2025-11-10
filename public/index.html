@@ -22,8 +22,28 @@
         <button class="btn ghost" id="reload-deck-btn">Refresh deck</button>
       </div>
     </header>
+    <button id="sendToEstimatorBtn" class="btn">Send to My Estimator</button>
+<script>
+ const EMAIL_IN = 'intake@theirestimator.com'; // change me
+  function fmt(n){ try{return '$'+Number(n).toFixed(2)}catch{return '$0.00'} }
+  document.getElementById('sendToEstimatorBtn').onclick = () => {
+    // these should already exist in your page/app
+    const total   = window.lastEstimate?.total ?? window.lastEstimate?.estimate?.total ?? 0;
+    const summary = window.lastEstimate?.summary || 'Draft estimate';
+    const body = [
+      summary,
+      '',
+      'Would you like more? (details attached below or in app).',
+      '',
+      'Card URL: ' + (window.lastCardUrl || location.href)
+    ].join('\n');
+    const subject = encodeURIComponent(`${summary} — ${fmt(total)}`);
+    const mailto  = `mailto:${EMAIL_IN}?subject=${subject}&body=${encodeURIComponent(body)}`;
+    location.href = mailto;
+   };
+ </script>
 
-    <main class="layout">
+   <main class="layout">
       <!-- Left: capture + lane selection + system feedback -->
       <section class="panel panel-primary">
         <header class="panel-header">
