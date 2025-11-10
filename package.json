@@ -6,8 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-   "postinstall": "node scripts/postinstall.js || echo 'postinstall skipped'"
-
+    "postinstall": "node scripts/postinstall.js || echo \"postinstall skipped\""
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",
@@ -19,6 +18,10 @@
     "mime-types": "^2.1.35",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "openai": "^4.60.0"
   }
 }
+

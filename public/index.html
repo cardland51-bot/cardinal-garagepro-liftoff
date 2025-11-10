@@ -1,111 +1,117 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#0B0D0E"/>
-  <title>Cardinal GaragePro</title>
-  <link rel="icon" href="/icons/icon-192.png">
-  <script src="/scripts/htmx.min.js"></script>
-  <link rel="stylesheet" href="/styles.css">
+  <meta charset="UTF-8">
+  <title>WorkAI Deck &mdash; Field-Ready Pricing Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Turn one job photo into a clean, defensible price band. Built for operators, not tourists.">
+  <link rel="stylesheet" href="./styles/app.css">
 </head>
 <body>
-  <header class="appbar">
-    <div class="logo"><img src="/logo.svg" alt="Cardinal GaragePro"/></div>
-    <div class="actions"><a class="btn subtle" href="/submit/">Contribute</a>
-      <button id="installBtn" class="btn subtle" hidden>Install</button>
-      <button id="themeBtn" class="btn">Night</button>
-    </div>
-  </header>
-
-  <main class="container">
-    <section class="uploader">
-      <form id="uploadForm" hx-post="/api/jobs/upload" hx-encoding="multipart/form-data" hx-target="#cards" hx-swap="afterbegin">
-        <input type="file" name="media" accept="image/*" capture="environment" required />
-        <input type="number" step="1" name="userPrice" placeholder="Optional: your price" />
-        <button class="btn primary">Create Price Band</button>
-      </form>
-    </section>
-
-    <section class="cards" id="cards" hx-get="/api/jobs/list" hx-trigger="load">
-      <!-- Cards injected here -->
-    </section>
-  </main>
-
-  <script type="module">
-    const themeBtn = document.getElementById('themeBtn');
-    const saved = localStorage.getItem('theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', saved);
-    themeBtn.textContent = saved === 'dark' ? 'Day' : 'Night';
-    themeBtn.onclick = () => {
-      const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', cur);
-      localStorage.setItem('theme', cur);
-      themeBtn.textContent = cur === 'dark' ? 'Day' : 'Night';
-    };
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('installBtn');
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      installBtn.hidden = false;
-    });
-    installBtn.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice;
-      deferredPrompt = null;
-      installBtn.hidden = true;
-    });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js');
-    }
-
-    document.body.addEventListener('htmx:afterOnLoad', (e) => {
-      try {
-        const data = JSON.parse(e.detail.xhr.responseText);
-        if (data && Array.isArray(data.items)) {
-          const root = document.getElementById('cards');
-          root.innerHTML = '';
-          data.items.forEach(renderCard);
-        } else if (data && data.id) {
-          renderCard(data, true);
-        }
-      } catch (_) {}
-    });
-
-    function renderCard(card, prepend=false) {
-      const root = document.getElementById('cards');
-      const el = document.createElement('article');
-      el.className = 'card';
-      el.innerHTML = `
-        <img class="photo" src="${card.media.url}" alt="job photo"/>
-        <div class="content">
-          <div class="label">${escapeHtml(card.label)}</div>
-          <div class="band">$${card.aiLow} – $${card.aiHigh}</div>
-          <div class="notes">${escapeHtml(card.notes)}</div>
-          <div class="meta">${new Date(card.createdAt).toLocaleString()}</div>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="brand-lockup">
+        <div class="brand-mark"></div>
+        <div class="brand-text">
+          <div class="brand-title">WorkAI Deck</div>
+          <div class="brand-sub">Photo-in. Price-out. No drama.</div>
         </div>
-        <div class="pro">
-          ${card.pro ? '' : '<div class="watermark">Preview — Not for Customer Use</div>'}
-          ${card.pro ? '<a class="btn subtle" href="'+card.media.url+'" download>Share/Download</a>' : '<button class="btn upgrade" data-id="'+card.id+'">Unlock Pro Report</button>'}
-        </div>
-      `;
-      if (prepend) root.prepend(el); else root.appendChild(el);
-      const btn = el.querySelector('.btn.upgrade');
-      if (btn) {
-        btn.addEventListener('click', async () => {
-          const res = await fetch('/api/cards/'+card.id+'/upgrade', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'per_card' }) });
-          const data = await res.json();
-          if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-        });
-      }
-    }
+      </div>
+      <div class="top-actions">
+        <span class="env-pill" id="env-label">LIVE EDGE</span>
+        <button class="btn ghost" id="reload-deck-btn">Refresh deck</button>
+      </div>
+    </header>
 
-    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])) }
-  </script>
+    <main class="layout">
+      <!-- Left: capture + lane selection + system feedback -->
+      <section class="panel panel-primary">
+        <header class="panel-header">
+          <h1>Snap the job. Get a sane range.</h1>
+          <p class="panel-subcopy">
+            For mowing, wash, junk, and punch list operators who price fast and stand behind their numbers.
+          </p>
+        </header>
+
+        <div class="stack gap-md">
+          <div class="input-grid">
+            <div class="field">
+              <label class="label">Job lane</label>
+              <div class="lane-row" id="lane-row">
+                <button class="lane-pill is-active" data-lane="mow">Mow</button>
+                <button class="lane-pill" data-lane="wash">Wash</button>
+                <button class="lane-pill" data-lane="junk">Junk</button>
+                <button class="lane-pill" data-lane="handyman">Handyman</button>
+              </div>
+              <p class="meta">Pick what this photo represents. You can adjust later per card.</p>
+            </div>
+
+            <div class="field">
+              <label class="label">Job photo</label>
+              <div class="upload-zone" id="upload-zone">
+                <input type="file" id="file-input" class="upload-input" accept="image/*" />
+                <div class="upload-instruction">
+                  <div class="upload-icon"></div>
+                  <div class="upload-copy">
+                    <div class="upload-title">Drop a photo or tap to load</div>
+                    <div class="upload-meta">One clear shot. Front curb, driveway, junk pile, or punch list.</div>
+                  </div>
+                </div>
+              </div>
+              <p class="helper">No login. Your deck stays on this device unless you export via your ops stack.</p>
+            </div>
+          </div>
+
+          <div class="actions-row">
+            <button class="btn primary" id="analyze-btn">Analyze &amp; build card</button>
+            <button class="btn secondary" id="clear-latest-btn">Clear last card</button>
+          </div>
+
+          <div class="system-status" id="system-status" aria-live="polite"></div>
+        </div>
+
+        <footer class="panel-footer">
+          <div class="trust-notes">
+            <span class="tag tag-soft">Guardrails over guesses</span>
+            <span class="tag tag-soft">Local labor &amp; materials logic</span>
+            <span class="tag tag-soft">Operator-tunable ranges</span>
+          </div>
+        </footer>
+      </section>
+
+      <!-- Right: live deck -->
+      <section class="panel panel-deck">
+        <header class="panel-header row-between">
+          <div>
+            <h2>Live pricing deck</h2>
+            <p class="panel-subcopy">Each card is a private record of what you saw and what you quoted.</p>
+          </div>
+          <div class="deck-filters">
+            <select id="lane-filter" class="input">
+              <option value="all">All lanes</option>
+              <option value="mow">Mow</option>
+              <option value="wash">Wash</option>
+              <option value="junk">Junk</option>
+              <option value="handyman">Handyman</option>
+            </select>
+            <select id="sort-order" class="input">
+              <option value="newest">Newest first</option>
+              <option value="lane">Group by lane</option>
+            </select>
+          </div>
+        </header>
+
+        <div id="deck-empty" class="deck-empty">
+          No cards yet. Run your first photo and this column becomes your field log.
+        </div>
+
+        <div id="deck-grid" class="deck-grid"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="tooltip" class="tooltip" role="tooltip"></div>
+
+  <script src="./scripts/app.js"></script>
 </body>
 </html>
