@@ -229,7 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const spawnDemo = $('#spawn-demo');
 
   // theme
- if (themeSel) {
+// theme (safe guard)
+if (themeSel) {
   themeSel.value = state.theme;
   applyTheme();
   themeSel.onchange = () => {
@@ -237,8 +238,9 @@ document.addEventListener('DOMContentLoaded', () => {
     applyTheme();
     saveState();
   };
+} else {
+  applyTheme(); // ensure default theme still applies
 }
-
 
   // settings dialog
   const settingsDialog = $('#settings-dialog');
