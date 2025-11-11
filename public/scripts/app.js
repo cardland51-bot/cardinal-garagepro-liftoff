@@ -242,13 +242,14 @@ if (themeSel) {
   applyTheme(); // ensure default theme still applies
 }
 
-  // settings dialog
-  const settingsDialog = $('#settings-dialog');
-  const laborRate = $('#laborRate');
-  const materialsMarkup = $('#materialsMarkup');
-  const regionFactor = $('#regionFactor');
-  const backendUrl = $('#backendUrl');
+// settings dialog (safe guards)
+const settingsDialog = $('#settings-dialog');
+const laborRate = $('#laborRate');
+const materialsMarkup = $('#materialsMarkup');
+const regionFactor = $('#regionFactor');
+const backendUrl = $('#backendUrl');
 
+if (openSettings && settingsDialog) {
   openSettings.onclick = () => {
     laborRate.value = state.settings.laborRate;
     materialsMarkup.value = state.settings.materialsMarkup;
@@ -256,7 +257,9 @@ if (themeSel) {
     backendUrl.value = state.settings.backendUrl;
     settingsDialog.showModal();
   };
+}
 
+if (saveSettings && settingsDialog) {
   saveSettings.onclick = (e) => {
     e.preventDefault();
     state.settings.laborRate = Number(laborRate.value) || 0;
@@ -267,6 +270,8 @@ if (themeSel) {
     settingsDialog.close();
     toast('Settings saved.');
   };
+}
+
 
   // export deck
   exportDeckBtn.onclick = () => {
