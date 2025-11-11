@@ -1,162 +1,84 @@
-// =========
-// WorkAI Deck Frontend Logic
-// Path: /public/scripts/app.js
-// =========
+/* ===================================================================
+   WorkDeck Pro — Production Frontend Logic
+   Version: Stable Release
+   Scope: Field-ready UI for photo capture, deck management, and calibration logging
+   Author: Cardinal GaragePro Liftoff Build
+   =================================================================== */
 
-// Integration points (backend endpoints)
-// Adjust ONLY if your backend routes differ.
-const API_UPLOAD = '/api/jobs/upload';
-const API_LIST = '/api/jobs/list';
+/* -------------------------- GLOBAL STATE -------------------------- */
 
-const laneRow = document.getElementById('lane-row');
-const uploadZone = document.getElementById('upload-zone');
-const fileInput = document.getElementById('file-input');
-const analyzeBtn = document.getElementById('analyze-btn');
-const clearLatestBtn = document.getElementById('clear-latest-btn');
-const systemStatus = document.getElementById('system-status');
-const deckGrid = document.getElementById('deck-grid');
-const deckEmpty = document.getElementById('deck-empty');
-const laneFilter = document.getElementById('lane-filter');
-const sortOrder = document.getElementById('sort-order');
-const reloadDeckBtn = document.getElementById('reload-deck-btn');
-const tooltip = document.getElementById('tooltip');
+const KEY = 'workdeckpro-state-v1';
 
-let activeLane = 'mow';
-let deck = [];
+const state = loadState() || {
+  settings: {
+    laborRate: 45,
+    materialsMarkup: 20,
+    regionFactor: 1.0,
+    backendUrl: '',
+  },
+  cards: [],
+  lane: 'mow',
+  theme: 'field',
+};
 
-// Lane selection
-laneRow.addEventListener('click', (e) => {
-  const btn = e.target.closest('.lane-pill');
-  if (!btn) return;
-  [...laneRow.querySelectorAll('.lane-pill')].forEach(b => b.classList.remove('is-active'));
-  btn.classList.add('is-active');
-  activeLane = btn.dataset.lane;
-});
+let isUploading = false;
 
-// Upload interactions
-uploadZone.addEventListener('click', () => fileInput.click());
+/* --------------------------- UTILITIES ---------------------------- */
 
-uploadZone.addEventListener('dragover', (e) => {
-  e.preventDefault();
-  uploadZone.classList.add('is-dragover');
-});
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
 
-uploadZone.addEventListener('dragleave', () => {
-  uploadZone.classList.remove('is-dragover');
-});
+function saveState() {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
 
-uploadZone.addEventListener('drop', (e) => {
-  e.preventDefault();
-  uploadZone.classList.remove('is-dragover');
-  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-    fileInput.files = e.dataTransfer.files;
-  }
-});
-
-// Analyze & build card
-analyzeBtn.addEventListener('click', async () => {
-  if (!fileInput.files || !fileInput.files[0]) {
-    paintStatus('error', 'Load a job photo first. One shot, clear and honest.', true);
-    return;
-  }
-
-  setLoading(true);
-
+function loadState() {
   try {
-    const fd = new FormData();
-    fd.append('media', fileInput.files[0]);
-    fd.append('lane', activeLane);
-
-    const res = await fetch(API_UPLOAD, {
-      method: 'POST',
-      body: fd
-    });
-
-    if (!res.ok) {
-      const msg = await safeErrorMessage(res);
-      throw new Error(msg || 'Unexpected response from pricing engine.');
-    }
-
-    const data = await res.json();
-    // Expected backend response:
-    // {
-    //   id: string,
-    //   lane: 'mow' | 'wash' | 'junk' | 'handyman',
-    //   low: number,
-    //   high: number,
-    //   note: string,
-    //   createdAt: string,
-    //   thumbUrl?: string
-    // }
-
-    const card = normalizeCard(data);
-    deck.unshift(card);
-    renderDeck();
-    paintStatus('success', 'Card created. Range logged to your deck.', false);
-    fileInput.value = '';
-  } catch (err) {
-    console.error(err);
-    paintStatus('error', err.message || 'Engine offline. Check backend or network.', true);
-  } finally {
-    setLoading(false);
+    return JSON.parse(localStorage.getItem(KEY));
+  } catch {
+    return null;
   }
-});
+}
 
-// Clear last card
-clearLatestBtn.addEventListener('click', () => {
-  if (!deck.length) return;
-  deck.shift();
-  renderDeck();
-  paintStatus('info', 'Last card cleared. Remaining deck is untouched.', false);
-});
-
-// Filter & sort
-laneFilter.addEventListener('change', renderDeck);
-sortOrder.addEventListener('change', renderDeck);
-
-// Reload deck from backend, if available
-reloadDeckBtn.addEventListener('click', async () => {
-  setLoading(true);
-  try {
-    const res = await fetch(API_LIST, { method: 'GET' });
-    if (!res.ok) {
-      throw new Error('Could not sync deck from backend.');
-    }
-    const list = await res.json();
-    deck = Array.isArray(list) ? list.map(normalizeCard) : [];
-    renderDeck();
-    paintStatus('success', 'Deck synced from server.', false);
-  } catch (err) {
-    console.warn(err);
-    paintStatus('info', 'Running local-only deck. Backend sync not required to operate.', false);
-  } finally {
-    setLoading(false);
-  }
-});
-
-// Status helpers
+function toast(msg, dur = 2200) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position: 'fixed',
+    bottom: '16px',
+    right: '16px',
+    background: 'var(--panel-2)',
+    color: 'var(--text)',
+    padding: '10px 14px',
+    borderRadius: '12px',
+    border: '1px solid rgba(255,255,255,0.08)',
+    boxShadow: '0 10px 30px rgba(0,0,0,.5)',
+    zIndex: 9999,
+    transition: 'opacity .25s ease',
+  });
+  document.body.appendChild(t);
+  setTimeout(() => {
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 250);
+  }, dur);
+}
 
 function paintStatus(type, message, sticky) {
+  const systemStatus = $('#system-status');
+  if (!systemStatus) return;
   systemStatus.innerHTML = '';
-  if (!message) return;
 
   const span = document.createElement('span');
   const dot = document.createElement('span');
   dot.className = 'dot';
-
-  switch (type) {
-    case 'success':
-      dot.style.backgroundColor = 'var(--success)';
-      break;
-    case 'error':
-      dot.style.backgroundColor = 'var(--error)';
-      break;
-    case 'info':
-      dot.style.backgroundColor = 'var(--info)';
-      break;
-    default:
-      dot.style.backgroundColor = 'var(--accent)';
-  }
+  dot.style.backgroundColor =
+    type === 'success'
+      ? 'var(--success)'
+      : type === 'error'
+      ? 'var(--error)'
+      : type === 'info'
+      ? 'var(--info)'
+      : 'var(--accent)';
 
   span.appendChild(dot);
   span.appendChild(document.createTextNode(message));
@@ -172,244 +94,229 @@ function paintStatus(type, message, sticky) {
   }
 }
 
-function setLoading(isLoading) {
-  analyzeBtn.disabled = isLoading;
-  reloadDeckBtn.disabled = isLoading;
-  clearLatestBtn.disabled = isLoading;
-  analyzeBtn.textContent = isLoading ? 'Analyzing…' : 'Analyze & build card';
+/* ------------------------ BACKEND URL SETUP ----------------------- */
 
-  if (isLoading) {
-    paintStatus('info', 'Reading the job. No guessing.', true);
+if (!state.settings.backendUrl) {
+  state.settings.backendUrl = window.location.hostname.includes('github.io')
+    ? 'https://cardinal-garagepro-liftoff-4.onrender.com'
+    : 'http://localhost:10000';
+  saveState();
+}
+
+/* ------------------------ CALIBRATION LOG ------------------------- */
+
+function logCalibration(card) {
+  try {
+    const logs = JSON.parse(localStorage.getItem('calibrationLogs') || '[]');
+    logs.unshift({
+      lane: card.lane,
+      priceLow: card.priceLow ?? 0,
+      priceHigh: card.priceHigh ?? 0,
+      avg: Math.round(((card.priceLow ?? 0) + (card.priceHigh ?? 0)) / 2),
+      createdAt: card.createdAt || new Date().toISOString(),
+      mediaUrl: card.mediaUrl || '',
+    });
+    if (logs.length > 200) logs.pop();
+    localStorage.setItem('calibrationLogs', JSON.stringify(logs));
+  } catch (e) {
+    console.warn('calibration log failed', e);
   }
 }
 
-// Normalize backend data
+/* ---------------------- BAND PRECISION HOOK ----------------------- */
 
-function normalizeCard(raw) {
-  const lane = raw.lane || activeLane || 'mow';
-  const low = Number(raw.low) || 40;
-  const high = Number(raw.high) || Math.max(low + 10, low * 1.35);
-  const now = raw.createdAt ? new Date(raw.createdAt) : new Date();
-  const id = raw.id || `JOB-${now.getTime().toString(36).toUpperCase()}`;
-  const safeNote = raw.note || defaultNoteForLane(lane);
-
-  return {
-    id,
-    lane,
-    low,
-    high,
-    note: safeNote,
-    createdAt: now.toISOString(),
-    thumbUrl: raw.thumbUrl || null
-  };
+function adjustBandPrecision(card) {
+  return card;
 }
 
-function defaultNoteForLane(lane) {
-  switch (lane) {
-    case 'mow':
-      return 'Standard cut, trim, and blow for typical residential turf. Adjust for slope and toys.';
-    case 'wash':
-      return 'Surface wash only. Excludes sealing and heavy oil remediation.';
-    case 'junk':
-      return 'Single trip. Standard load, normal access. Landfill fees included.';
-    case 'handyman':
-      return 'Minor punch list. Labor only unless otherwise specified.';
-    default:
-      return 'Range based on standard field conditions and time-on-site.';
+/* -------------------------- THEME LOGIC --------------------------- */
+
+function applyTheme() {
+  document.documentElement.classList.remove('theme-field', 'theme-steel', 'theme-sage');
+  document.documentElement.classList.add(`theme-${state.theme}`);
+}
+
+/* ------------------------ BACKEND HANDLERS ------------------------ */
+
+async function uploadToBackend(file) {
+  if (!navigator.onLine) {
+    toast('Offline — upload disabled');
+    throw new Error('offline');
   }
+  if (!state.settings.backendUrl) {
+    toast('No backend configured');
+    throw new Error('no_backend');
+  }
+  const endpoint = state.settings.backendUrl.replace(/\/$/, '') + '/api/jobs/upload';
+  const fd = new FormData();
+  fd.append('media', file);
+  fd.append('lane', state.lane);
+  const res = await fetch(endpoint, { method: 'POST', body: fd });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'upload_failed');
+  }
+  return res.json();
 }
 
-// Render deck
+async function fetchDeckFromBackend() {
+  if (!navigator.onLine) throw new Error('offline');
+  const endpoint = state.settings.backendUrl.replace(/\/$/, '') + '/api/jobs/list';
+  const res = await fetch(endpoint);
+  if (!res.ok) throw new Error('sync_failed');
+  const data = await res.json();
+  return data.items || [];
+}
+
+/* --------------------------- RENDERING ---------------------------- */
 
 function renderDeck() {
+  const deckGrid = $('#deck');
+  const deckEmpty = $('#empty-hint');
+  if (!deckGrid || !deckEmpty) return;
+
   deckGrid.innerHTML = '';
-
-  let cards = [...deck];
-
-  const lane = laneFilter.value;
-  if (lane !== 'all') {
-    cards = cards.filter(c => c.lane === lane);
-  }
-
-  const sort = sortOrder.value;
-  if (sort === 'lane') {
-    cards.sort((a, b) => (a.lane > b.lane ? 1 : a.lane < b.lane ? -1 : (b.createdAt || '').localeCompare(a.createdAt || '')));
-  } else {
-    cards.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  }
-
+  const cards = state.cards.map(adjustBandPrecision);
   if (!cards.length) {
     deckEmpty.style.display = 'block';
     return;
   }
-
   deckEmpty.style.display = 'none';
 
-  cards.forEach((card) => {
+  for (const c of cards) {
     const el = document.createElement('article');
     el.className = 'card';
-
-    const left = document.createElement('div');
-    const right = document.createElement('div');
-
-    // Header
-    const header = document.createElement('div');
-    header.className = 'card-header';
-
-    const laneTag = document.createElement('span');
-    laneTag.className = 'card-lane-tag';
-    laneTag.textContent = laneLabel(card.lane);
-
-    const title = document.createElement('div');
-    title.className = 'card-title';
-    title.textContent = headlineForLane(card.lane);
-
-    header.appendChild(laneTag);
-    header.appendChild(title);
-
-    // Price
-    const price = document.createElement('div');
-    price.className = 'card-price';
-    price.textContent = formatRange(card.low, card.high);
-
-    const note = document.createElement('div');
-    note.className = 'card-note';
-    note.textContent = card.note;
-
-    const metaRow = document.createElement('div');
-    metaRow.className = 'card-meta-row';
-
-    const idSpan = document.createElement('span');
-    idSpan.className = 'card-id';
-    idSpan.textContent = card.id;
-
-    const tsSpan = document.createElement('span');
-    tsSpan.className = 'card-timestamp';
-    tsSpan.textContent = formatTime(card.createdAt);
-
-    metaRow.appendChild(idSpan);
-    metaRow.appendChild(tsSpan);
-
-    left.appendChild(header);
-    left.appendChild(price);
-    left.appendChild(note);
-    left.appendChild(metaRow);
-
-    // Right side: thumb + status tags
-    if (card.thumbUrl) {
-      const img = document.createElement('img');
-      img.src = card.thumbUrl;
-      img.alt = 'Job photo';
-      img.style.width = '100%';
-      img.style.maxHeight = '96px';
-      img.style.objectFit = 'cover';
-      img.style.borderRadius = '8px';
-      img.setAttribute('data-tooltip', 'Source frame from your upload. Keep them honest.');
-      right.appendChild(img);
-    }
-
-    const tagsWrap = document.createElement('div');
-    tagsWrap.className = 'card-meta-row';
-
-    const guardTag = document.createElement('span');
-    guardTag.className = 'tag tag-success';
-    guardTag.textContent = 'Guardrail band';
-
-    const opsTag = document.createElement('span');
-    opsTag.className = 'tag tag-soft';
-    opsTag.textContent = 'Edit logic in ops console';
-
-    tagsWrap.appendChild(guardTag);
-    tagsWrap.appendChild(opsTag);
-    right.appendChild(tagsWrap);
-
-    el.appendChild(left);
-    el.appendChild(right);
-
+    el.innerHTML = `
+      <header class="card-header">
+        <span class="lane-badge">${c.lane}</span>
+        <small>${new Date(c.createdAt).toLocaleString()}</small>
+      </header>
+      <div class="card-media" style="background-image:url('${c.mediaUrl || ''}')"></div>
+      <div class="card-body">
+        <p>Band<br><b>$${Math.round(c.priceLow)}–$${Math.round(c.priceHigh)}</b></p>
+        <p>Notes<br><b>${c.note || ''}</b></p>
+      </div>`;
     deckGrid.appendChild(el);
-  });
-}
-
-// Helpers
-
-function laneLabel(lane) {
-  switch (lane) {
-    case 'mow': return 'Mow';
-    case 'wash': return 'Wash';
-    case 'junk': return 'Junk';
-    case 'handyman': return 'Handyman';
-    default: return lane;
   }
 }
 
-function headlineForLane(lane) {
-  switch (lane) {
-    case 'mow':
-      return 'Curb-ready cut, zero guesswork.';
-    case 'wash':
-      return 'Clean concrete, no soft spots.';
-    case 'junk':
-      return 'One haul, all above board.';
-    case 'handyman':
-      return 'Punch list handled like a pro.';
-    default:
-      return 'Defensible field price.';
-  }
+/* ------------------------- CARD CREATION -------------------------- */
+
+function addCardToDeck(card) {
+  const c = {
+    lane: card.lane || state.lane,
+    priceLow: card.aiLow || card.priceLow || 0,
+    priceHigh: card.aiHigh || card.priceHigh || 0,
+    note: card.notes || '',
+    createdAt: card.createdAt || new Date().toISOString(),
+    mediaUrl: card.media?.url || card.mediaUrl || '',
+  };
+  state.cards.unshift(c);
+  logCalibration(c);
+  saveState();
+  renderDeck();
 }
 
-function formatRange(low, high) {
-  const l = Math.round(low);
-  const h = Math.round(high);
-  return `$${l}–$${h}`;
-}
+/* ---------------------- EVENT INITIALIZATION ---------------------- */
 
-function formatTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
+document.addEventListener('DOMContentLoaded', () => {
+  const themeSel = $('#theme-select');
+  const openSettings = $('#open-settings');
+  const saveSettings = $('#save-settings');
+  const exportDeckBtn = $('#export-deck');
+  const captureBtn = $('#capture-btn');
+  const fileInput = $('#file-input');
+  const spawnDemo = $('#spawn-demo');
 
-async function safeErrorMessage(res) {
-  try {
-    const text = await res.text();
+  // theme
+  themeSel.value = state.theme;
+  applyTheme();
+  themeSel.onchange = () => {
+    state.theme = themeSel.value;
+    applyTheme();
+    saveState();
+  };
+
+  // settings dialog
+  const settingsDialog = $('#settings-dialog');
+  const laborRate = $('#laborRate');
+  const materialsMarkup = $('#materialsMarkup');
+  const regionFactor = $('#regionFactor');
+  const backendUrl = $('#backendUrl');
+
+  openSettings.onclick = () => {
+    laborRate.value = state.settings.laborRate;
+    materialsMarkup.value = state.settings.materialsMarkup;
+    regionFactor.value = state.settings.regionFactor;
+    backendUrl.value = state.settings.backendUrl;
+    settingsDialog.showModal();
+  };
+
+  saveSettings.onclick = (e) => {
+    e.preventDefault();
+    state.settings.laborRate = Number(laborRate.value) || 0;
+    state.settings.materialsMarkup = Number(materialsMarkup.value) || 0;
+    state.settings.regionFactor = Number(regionFactor.value) || 1;
+    state.settings.backendUrl = backendUrl.value.trim();
+    saveState();
+    settingsDialog.close();
+    toast('Settings saved.');
+  };
+
+  // export deck
+  exportDeckBtn.onclick = () => {
+    const csv =
+      'lane,priceLow,priceHigh,note,createdAt,mediaUrl\n' +
+      state.cards
+        .map(
+          (c) =>
+            `${c.lane},${c.priceLow},${c.priceHigh},"${(c.note || '').replace(/"/g, '""')}",${c.createdAt},${c.mediaUrl}`
+        )
+        .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'deck.csv';
+    a.click();
+  };
+
+  // capture/upload
+  captureBtn.onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const file = fileInput.files[0];
+    if (!file || isUploading) return;
+    isUploading = true;
+    paintStatus('info', 'Uploading…', true);
     try {
-      const json = JSON.parse(text);
-      return json.error || json.message || text;
-    } catch (_) {
-      return text;
+      const result = await uploadToBackend(file);
+      addCardToDeck(result);
+      paintStatus('success', 'Card created successfully.', false);
+    } catch (err) {
+      console.error(err);
+      paintStatus('error', err.message || 'Upload failed', true);
+    } finally {
+      isUploading = false;
+      fileInput.value = '';
     }
-  } catch {
-    return null;
-  }
-}
+  };
 
-// Simple tooltips for elements with data-tooltip
-document.addEventListener('mouseover', (e) => {
-  const target = e.target.closest('[data-tooltip]');
-  if (!target) {
-    tooltip.style.opacity = '0';
-    return;
-  }
-  tooltip.textContent = target.getAttribute('data-tooltip');
-  const rect = target.getBoundingClientRect();
-  tooltip.style.left = rect.left + window.scrollX + 'px';
-  tooltip.style.top = rect.top + window.scrollY - 26 + 'px';
-  tooltip.style.opacity = '1';
-  tooltip.style.transform = 'translateY(0)';
+  // demo cards
+  spawnDemo.onclick = () => {
+    const sample = [
+      { lane: 'mow', priceLow: 50, priceHigh: 70, note: 'Demo mow', createdAt: new Date().toISOString(), mediaUrl: 'https://picsum.photos/seed/mow/400/250' },
+      { lane: 'wash', priceLow: 120, priceHigh: 160, note: 'Demo wash', createdAt: new Date().toISOString(), mediaUrl: 'https://picsum.photos/seed/wash/400/250' },
+    ];
+    state.cards.unshift(...sample);
+    saveState();
+    renderDeck();
+    toast('Demo cards added.');
+  };
+
+  // offline indicators
+  window.addEventListener('online', () => paintStatus('success', 'Back online', false));
+  window.addEventListener('offline', () => paintStatus('info', 'Offline mode', true));
+
+  // first render
+  renderDeck();
+  paintStatus('info', 'Ready — connected to backend.', false);
 });
-
-document.addEventListener('mouseout', (e) => {
-  if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tooltip]')) return;
-  tooltip.style.opacity = '0';
-  tooltip.style.transform = 'translateY(4px)';
-});
-
-// Initial render: local empty deck
-renderDeck();
-paintStatus('info', 'Ready. Point this at your existing backend. No extra ceremony.', false);
